@@ -81,41 +81,51 @@ server.get('/participants', async (req, res) => {
 server.post('/messages', async (req, res) => {
   let message = req.body;
   const { user: from } = req.headers;
-  const activeUser = await db.collection('users').findOne({ name: from });
   const validation = messageSchema.validate(message, { abortEarly: false });
 
-  if (!activeUser || validation.error) {
-    return res.sendStatus(422);
-  }
+  try {
+    const activeUser = await db.collection('users').findOne({ name: from });
 
-  message = {
-    ...message,
-    from,
-    time: dayjs(Date.now()).format('hh:mm:ss'),
-  };
-  await db.collection('messages').insertOne(message);
-  return res.sendStatus(201);
+    if (!activeUser || validation.error) {
+      return res.sendStatus(422);
+    }
+
+    message = {
+      ...message,
+      from,
+      time: dayjs(Date.now()).format('hh:mm:ss'),
+    };
+    await db.collection('messages').insertOne(message);
+    return res.sendStatus(201);
+  } catch (error) {
+    return res.status(400).send(error.message);
+  }
 });
 
 server.get('/messages', async (req, res) => {
-  const messages = await db.collection('messages').find().toArray();
   const { limit } = req.query;
   const { user } = req.headers;
-  let lastMessages = messages;
-  lastMessages = lastMessages.filter((value) => {
-    return (
-      value.type === 'status' ||
-      value.type === 'message' ||
-      (value.type === 'private_message' &&
-        (value.to === user || value.from === user))
-    );
-  });
 
-  if (limit) {
-    lastMessages = lastMessages.slice(-limit);
+  try {
+    const messages = await db.collection('messages').find().toArray();
+    let lastMessages = messages;
+    lastMessages = lastMessages.filter((value) => {
+      return (
+        value.type === 'status' ||
+        value.type === 'message' ||
+        (value.type === 'private_message' &&
+          (value.to === user || value.from === user))
+      );
+    });
+
+    if (limit) {
+      lastMessages = lastMessages.slice(-limit);
+    }
+
+    res.send(lastMessages);
+  } catch (error) {
+    res.status(400).send(error.message);
   }
-
-  res.send(lastMessages);
 });
 
 server.listen(5000, () => console.log('Listening on port 5000'));
