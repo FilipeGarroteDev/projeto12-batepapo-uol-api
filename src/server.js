@@ -1,9 +1,9 @@
-/* eslint-disable no-console */
+/* eslint-disable no-console, no-underscore-dangle */
 
 import dayjs from 'dayjs';
 import express from 'express';
 import cors from 'cors';
-import { MongoClient } from 'mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
 import joi from 'joi';
 import dotenv from 'dotenv';
 
@@ -125,6 +125,27 @@ server.get('/messages', async (req, res) => {
     res.send(lastMessages);
   } catch (error) {
     res.status(400).send(error.message);
+  }
+});
+
+server.post('/status', async (req, res) => {
+  const { user } = req.headers;
+
+  try {
+    const activeUser = await db.collection('users').findOne({ name: user });
+
+    if (!activeUser) {
+      return res.sendStatus(404);
+    }
+
+    const lastStatus = Date.now();
+    await db
+      .collection('users')
+      .updateOne({ name: user }, { $set: { lastStatus } });
+
+    return res.sendStatus(200);
+  } catch (error) {
+    return res.status(400).send(error.message);
   }
 });
 
