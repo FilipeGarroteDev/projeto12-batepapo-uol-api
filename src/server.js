@@ -33,24 +33,33 @@ const messageSchema = joi.object({
 server.post('/participants', async (req, res) => {
   const { name } = req.body;
   const validation = userSchema.validate(req.body);
-  const hasUser = await db.collection('users').findOne({ name: req.body.name });
 
-  if (validation.error) {
-    return res
-      .status(422)
-      .send(
-        'O nome de usuário é obrigatório. Por favor, insira um nome válido! :)'
-      );
-  }
-  if (hasUser) {
-    return res
-      .status(409)
-      .send(
-        'Esse nome de usuário já está sendo utilizado. Por favor, escolha outro nome! :)'
-      );
-  }
   try {
-    await db.collection().insertOne({
+    const hasUser = await db.collection('users').findOne({ name });
+
+    if (validation.error) {
+      return res
+        .status(422)
+        .send(
+          'O nome de usuário é obrigatório. Por favor, insira um nome válido! :)'
+        );
+    }
+    if (hasUser) {
+      return res
+        .status(409)
+        .send(
+          'Esse nome de usuário já está sendo utilizado. Por favor, escolha outro nome! :)'
+        );
+    }
+
+    await db.collection('messages').insertOne({
+      from: name,
+      to: 'Todos',
+      text: 'entra na sala...',
+      type: 'status',
+      time: dayjs(Date.now()).format('hh:mm:ss'),
+    });
+    await db.collection('users').insertOne({
       name,
       lastStatus: Date.now(),
     });
@@ -61,15 +70,19 @@ server.post('/participants', async (req, res) => {
 });
 
 server.get('/participants', async (req, res) => {
-  const users = await db.collection('users').find().toArray();
-  return res.send(users);
+  try {
+    const users = await db.collection('users').find().toArray();
+    return res.send(users);
+  } catch (error) {
+    return res.status(400).send(error.message);
+  }
 });
 
 server.post('/messages', async (req, res) => {
   let message = req.body;
-  const { user } = req.headers;
-  const activeUser = await db.collection('users').findOne({ name: user });
-  const validation = messageSchema.validate(message);
+  const { user: from } = req.headers;
+  const activeUser = await db.collection('users').findOne({ name: from });
+  const validation = messageSchema.validate(message, { abortEarly: false });
 
   if (!activeUser || validation.error) {
     return res.sendStatus(422);
@@ -77,56 +90,32 @@ server.post('/messages', async (req, res) => {
 
   message = {
     ...message,
+    from,
     time: dayjs(Date.now()).format('hh:mm:ss'),
   };
   await db.collection('messages').insertOne(message);
   return res.sendStatus(201);
 });
 
-// server.post('/messages', (req, res) => {
-//   const { to, text, type } = req.body;
-//   const { user: from } = req.headers;
-//   const loggedUser = users.find((user) => user.name === from);
+server.get('/messages', async (req, res) => {
+  const messages = await db.collection('messages').find().toArray();
+  const { limit } = req.query;
+  const { user } = req.headers;
+  let lastMessages = messages;
+  lastMessages = lastMessages.filter((value) => {
+    return (
+      value.type === 'status' ||
+      value.type === 'message' ||
+      (value.type === 'private_message' &&
+        (value.to === user || value.from === user))
+    );
+  });
 
-//   if (to === '' || text === '') {
-//     console.log('to');
-//     res.status(422).send('Você não pode mandar uma mensagem vazia.');
-//     return;
-//   }
+  if (limit) {
+    lastMessages = lastMessages.slice(-limit);
+  }
 
-//   if (type !== 'message' && type !== 'private_message') {
-//     console.log('message');
-//     res.sendStatus(422);
-//     return;
-//   }
-
-//   if (loggedUser) {
-//     console.log('logged');
-//     res.sendStatus(422);
-//     return;
-//   }
-
-//   const mensagem = {
-//     to,
-//     text,
-//     type,
-//     from,
-//     time: formatado,
-//   };
-
-//   messages.push(mensagem);
-//   res.send(messages);
-// });
-
-// server.get('/messages', (req, res) => {
-//   const { limit } = req.query;
-//   let lastMessages = messages;
-
-//   if (limit) {
-//     lastMessages = messages.slice(-limit);
-//   }
-
-//   res.send(lastMessages);
-// });
+  res.send(lastMessages);
+});
 
 server.listen(5000, () => console.log('Listening on port 5000'));
