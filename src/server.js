@@ -30,6 +30,23 @@ const messageSchema = joi.object({
   type: joi.string().valid('message', 'private_message'),
 });
 
+function isPublicMessages(message) {
+  if (message.type === 'private_message') {
+    return false;
+  }
+  return true;
+}
+
+function isUserPrivateMessages(message, user) {
+  if (
+    message.type === 'private_message' &&
+    (message.to === user || message.from === user)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 server.post('/participants', async (req, res) => {
   const { name } = req.body;
   const validation = userSchema.validate(req.body);
@@ -110,12 +127,7 @@ server.get('/messages', async (req, res) => {
     const messages = await db.collection('messages').find().toArray();
     let lastMessages = messages;
     lastMessages = lastMessages.filter((value) => {
-      return (
-        value.type === 'status' ||
-        value.type === 'message' ||
-        (value.type === 'private_message' &&
-          (value.to === user || value.from === user))
-      );
+      return isPublicMessages(value) || isUserPrivateMessages(value, user);
     });
 
     if (limit) {
