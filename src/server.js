@@ -30,6 +30,32 @@ const messageSchema = joi.object({
   type: joi.string().valid('message', 'private_message'),
 });
 
+async function removeParticipants() {
+  try {
+    const usersList = await db.collection('users').find().toArray();
+    const kickedUsers = usersList.filter(
+      (value) => Date.now() - Number(value.lastStatus) > 10000
+    );
+
+    if (kickedUsers) {
+      kickedUsers.forEach((value) => {
+        db.collection('users').deleteOne({ _id: ObjectId(value._id) });
+        db.collection('messages').insertOne({
+          from: value.name,
+          to: 'Todos',
+          text: 'sai da sala...',
+          type: 'status',
+          time: dayjs(Date.now()).format('hh:mm:ss'),
+        });
+      });
+    }
+  } catch (error) {
+    console.log(error.message);
+  }
+}
+
+setInterval(removeParticipants, 15000);
+
 function isPublicMessages(message) {
   if (message.type === 'private_message') {
     return false;
@@ -106,7 +132,11 @@ server.post('/messages', async (req, res) => {
       .collection('users')
       .findOne({ name: message.to });
 
-    if (!activeReceiver || !activeUser || validation.error) {
+    if (
+      (!activeReceiver && message.to !== 'Todos') ||
+      !activeUser ||
+      validation.error
+    ) {
       return res.sendStatus(422);
     }
 
