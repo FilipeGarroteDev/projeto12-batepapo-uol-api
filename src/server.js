@@ -102,8 +102,11 @@ server.post('/messages', async (req, res) => {
 
   try {
     const activeUser = await db.collection('users').findOne({ name: from });
+    const activeReceiver = await db
+      .collection('users')
+      .findOne({ name: message.to });
 
-    if (!activeUser || validation.error) {
+    if (!activeReceiver || !activeUser || validation.error) {
       return res.sendStatus(422);
     }
 
