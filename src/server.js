@@ -68,7 +68,7 @@ function isPublicMessages(message) {
 function isUserPrivateMessages(message, user) {
   if (
     message.type === 'private_message' &&
-    (message.to === user || message.from === user)
+    (message.to === user || message.from === user || message.to === 'Todos')
   ) {
     return true;
   }
