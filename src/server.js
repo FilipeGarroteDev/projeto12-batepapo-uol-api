@@ -1,4 +1,5 @@
-/* eslint-disable no-console, no-underscore-dangle */
+/* eslint-disable consistent-return */
+/* eslint-disable no-console, no-underscore-dangle, import/no-unresolved */
 
 import dayjs from 'dayjs';
 import express from 'express';
@@ -6,6 +7,7 @@ import cors from 'cors';
 import { MongoClient, ObjectId } from 'mongodb';
 import joi from 'joi';
 import dotenv from 'dotenv';
+import { stripHtml } from 'string-strip-html';
 
 dotenv.config();
 
@@ -73,9 +75,17 @@ function isUserPrivateMessages(message, user) {
   return false;
 }
 
+function sanitizedData(value) {
+  if (!value) {
+    return;
+  }
+  return stripHtml(value).result.trim();
+}
+
 server.post('/participants', async (req, res) => {
-  const { name } = req.body;
-  const validation = userSchema.validate(req.body);
+  const name = sanitizedData(req.body.name);
+  const validation = userSchema.validate({ name });
+  console.log(name);
 
   try {
     const hasUser = await db.collection('users').findOne({ name });
@@ -123,7 +133,8 @@ server.get('/participants', async (req, res) => {
 
 server.post('/messages', async (req, res) => {
   let message = req.body;
-  const { user: from } = req.headers;
+  const { to, text, type } = req.body;
+  const from = sanitizedData(req.headers.user);
   const validation = messageSchema.validate(message, { abortEarly: false });
 
   try {
@@ -132,12 +143,14 @@ server.post('/messages', async (req, res) => {
     if (!activeUser || validation.error) {
       return res.sendStatus(422);
     }
-
     message = {
-      ...message,
+      to: sanitizedData(to),
+      text: sanitizedData(text),
+      type: sanitizedData(type),
       from,
       time: dayjs(Date.now()).format('hh:mm:ss'),
     };
+
     await db.collection('messages').insertOne(message);
     return res.sendStatus(201);
   } catch (error) {
@@ -148,12 +161,15 @@ server.post('/messages', async (req, res) => {
 server.get('/messages', async (req, res) => {
   const { limit } = req.query;
   const { user } = req.headers;
+  const cleanedUser = sanitizedData(user);
 
   try {
     const messages = await db.collection('messages').find().toArray();
     let lastMessages = messages;
     lastMessages = lastMessages.filter((value) => {
-      return isPublicMessages(value) || isUserPrivateMessages(value, user);
+      return (
+        isPublicMessages(value) || isUserPrivateMessages(value, cleanedUser)
+      );
     });
 
     if (limit) {
@@ -170,7 +186,7 @@ server.get('/messages', async (req, res) => {
 });
 
 server.post('/status', async (req, res) => {
-  const { user } = req.headers;
+  const user = sanitizedData(req.headers.user);
 
   try {
     const activeUser = await db.collection('users').findOne({ name: user });
@@ -193,6 +209,7 @@ server.post('/status', async (req, res) => {
 server.delete('/messages/:id', async (req, res) => {
   const { id } = req.params;
   const { user } = req.headers;
+  const cleanedUser = sanitizedData(user);
   try {
     const message = await db
       .collection('messages')
@@ -201,7 +218,7 @@ server.delete('/messages/:id', async (req, res) => {
     if (!message) {
       return res.status(404).send('Mensagem não encontrada. :(');
     }
-    if (message.from !== user) {
+    if (message.from !== cleanedUser) {
       return res
         .status(401)
         .send(
@@ -217,7 +234,8 @@ server.delete('/messages/:id', async (req, res) => {
 
 server.put('/messages/:id', async (req, res) => {
   let message = req.body;
-  const { user: from } = req.headers;
+  const { to, text, type } = req.body;
+  const from = sanitizedData(req.headers.user);
   const { id } = req.params;
   const validation = messageSchema.validate(message, { abortEarly: false });
 
@@ -242,7 +260,9 @@ server.put('/messages/:id', async (req, res) => {
     }
 
     message = {
-      ...message,
+      to: sanitizedData(to),
+      text: sanitizedData(text),
+      type: sanitizedData(type),
       from,
       time: dayjs(Date.now()).format('hh:mm:ss'),
     };
