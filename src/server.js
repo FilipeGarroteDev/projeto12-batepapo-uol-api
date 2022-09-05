@@ -76,7 +76,7 @@ function isUserPrivateMessages(message, user) {
 }
 
 function sanitizedData(value) {
-  if (!value) {
+  if (!value || typeof value === 'number') {
     return;
   }
   return stripHtml(value).result.trim();
@@ -84,19 +84,16 @@ function sanitizedData(value) {
 
 server.post('/participants', async (req, res) => {
   const name = sanitizedData(req.body.name);
-  const validation = userSchema.validate({ name });
+  const validation = userSchema.validate({ name }, { abortEarly: false });
   console.log(name);
+
+  if (validation.error) {
+    const errors = validation.error.details.map((error) => error.message);
+    return res.status(422).send(errors);
+  }
 
   try {
     const hasUser = await db.collection('users').findOne({ name });
-
-    if (validation.error) {
-      return res
-        .status(422)
-        .send(
-          'O nome de usuário é obrigatório. Por favor, insira um nome válido! :)'
-        );
-    }
     if (hasUser) {
       return res
         .status(409)
@@ -137,11 +134,19 @@ server.post('/messages', async (req, res) => {
   const from = sanitizedData(req.headers.user);
   const validation = messageSchema.validate(message, { abortEarly: false });
 
+  if (validation.error) {
+    const errors = validation.error.details.map((error) => error.message);
+    return res.status(422).send(errors);
+  }
+
   try {
     const activeUser = await db.collection('users').findOne({ name: from });
-
-    if (!activeUser || validation.error) {
-      return res.sendStatus(422);
+    if (!activeUser) {
+      return res
+        .status(422)
+        .send(
+          'O remetente não está logado/ativo na lista de participantes. Refaça o login'
+        );
     }
     message = {
       to: sanitizedData(to),
