@@ -215,4 +215,44 @@ server.delete('/messages/:id', async (req, res) => {
   }
 });
 
+server.put('/messages/:id', async (req, res) => {
+  let message = req.body;
+  const { user: from } = req.headers;
+  const { id } = req.params;
+  const validation = messageSchema.validate(message, { abortEarly: false });
+
+  try {
+    const activeUser = await db.collection('users').findOne({ name: from });
+    const sentMessage = await db
+      .collection('messages')
+      .findOne({ _id: ObjectId(id) });
+
+    if (!activeUser || validation.error) {
+      return res.sendStatus(422);
+    }
+    if (!sentMessage) {
+      return res.status(404).send('Mensagem não encontrada. :(');
+    }
+    if (sentMessage.from !== from) {
+      return res
+        .status(401)
+        .send(
+          'Você não é o dono dessa mensagem e, portanto, não pode deletá-la! :('
+        );
+    }
+
+    message = {
+      ...message,
+      from,
+      time: dayjs(Date.now()).format('hh:mm:ss'),
+    };
+    await db
+      .collection('messages')
+      .updateOne({ _id: ObjectId(id) }, { $set: message });
+    return res.sendStatus(201);
+  } catch (error) {
+    return res.status(400).send(error.message);
+  }
+});
+
 server.listen(5000, () => console.log('Listening on port 5000'));
