@@ -38,9 +38,9 @@ async function removeParticipants() {
     );
 
     if (kickedUsers) {
-      kickedUsers.forEach((value) => {
-        db.collection('users').deleteOne({ _id: ObjectId(value._id) });
-        db.collection('messages').insertOne({
+      kickedUsers.forEach(async (value) => {
+        await db.collection('users').deleteOne({ _id: ObjectId(value._id) });
+        await db.collection('messages').insertOne({
           from: value.name,
           to: 'Todos',
           text: 'sai da sala...',
@@ -128,15 +128,8 @@ server.post('/messages', async (req, res) => {
 
   try {
     const activeUser = await db.collection('users').findOne({ name: from });
-    const activeReceiver = await db
-      .collection('users')
-      .findOne({ name: message.to });
 
-    if (
-      (!activeReceiver && message.to !== 'Todos') ||
-      !activeUser ||
-      validation.error
-    ) {
+    if (!activeUser || validation.error) {
       return res.sendStatus(422);
     }
 
@@ -164,7 +157,10 @@ server.get('/messages', async (req, res) => {
     });
 
     if (limit) {
-      lastMessages = lastMessages.slice(-limit);
+      lastMessages = lastMessages.slice(-Number(limit));
+      if (Number(limit) === 0) {
+        lastMessages = [];
+      }
     }
 
     res.send(lastMessages);
@@ -189,6 +185,31 @@ server.post('/status', async (req, res) => {
       .updateOne({ name: user }, { $set: { lastStatus } });
 
     return res.sendStatus(200);
+  } catch (error) {
+    return res.status(400).send(error.message);
+  }
+});
+
+server.delete('/messages/:id', async (req, res) => {
+  const { id } = req.params;
+  const { user } = req.headers;
+  try {
+    const message = await db
+      .collection('messages')
+      .findOne({ _id: ObjectId(id) });
+
+    if (!message) {
+      return res.status(404).send('Mensagem não encontrada. :(');
+    }
+    if (message.from !== user) {
+      return res
+        .status(401)
+        .send(
+          'Você não é o dono dessa mensagem e, portanto, não pode deletá-la! :('
+        );
+    }
+    await db.collection('messages').deleteOne({ _id: ObjectId(id) });
+    return res.status(200).send('Mensagem apagada com sucesso! :)');
   } catch (error) {
     return res.status(400).send(error.message);
   }
